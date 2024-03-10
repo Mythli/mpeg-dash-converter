@@ -9,23 +9,15 @@ This Bash script automates the process of converting video files into multiple b
 - Automatically detects and uses the original video resolution
 - Provides a simple command-line interface with customizable options
 
-## Prerequisites
-Before running the script, ensure that you have the following dependencies installed:
-- FFmpeg: A powerful multimedia framework for handling video and audio processing
-- MP4Box: A tool for creating and manipulating MP4 files, part of the GPAC framework
-
 ## Usage
 To use the script, follow these steps:
-1. Download the `dashify.sh` script and place it in a directory accessible from your command line.
-
-2. Make the script executable by running the following command:
+1. Install the script
    ```
-   chmod +x dashify.sh
+   curl -sL https://raw.githubusercontent.com/Mythli/mpeg-dash-converter/main/src/download.sh | bash
    ```
-
-3. Run the script with the desired options and input video files:
+2. Run the script with the desired options and input video files:
    ```
-   ./dashify.sh [options] <input_files...>
+   dashify [options] <input_files...>
    ```
 
    Available options:
@@ -39,7 +31,7 @@ To use the script, follow these steps:
    ./dashify.sh --framerate 30 --crf 20,24,28 --steps 4 --preset fast video1.mp4 video2.mp4
    ```
 
-4. The script will process each input video file and generate the corresponding multi-bitrate versions and MPEG-DASH files in a separate directory named `<video_name>.dash`.
+3. The script will process each input video file and generate the corresponding multi-bitrate versions and MPEG-DASH files in a separate directory named `<video_name>.dash`.
 
 ## Customization
 You can customize the default values for the script by modifying the following variables at the beginning of the script:
