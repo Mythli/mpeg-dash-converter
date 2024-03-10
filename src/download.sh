@@ -7,8 +7,6 @@ read clone_dir
 # If the user doesn't input anything, use the current directory
 clone_dir=${clone_dir:-$(pwd)}
 
-exit 0;
-
 # Use the current directory as the default if no input is provided
 clone_dir=${clone_dir:-.}
 
