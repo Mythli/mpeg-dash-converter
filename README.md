@@ -13,7 +13,7 @@ This Bash script automates the process of converting video files into multiple b
 To use the script, follow these steps:
 1. Install the script
    ```
-   curl -sL https://raw.githubusercontent.com/Mythli/mpeg-dash-converter/main/src/download.sh | bash
+   bash <(curl -sL https://raw.githubusercontent.com/Mythli/mpeg-dash-converter/main/src/download.sh)
    ```
 2. Run the script with the desired options and input video files:
    ```
