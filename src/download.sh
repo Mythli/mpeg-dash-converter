@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 
 # Prompt the user for a directory to clone the repository into
-read -p "Enter the directory to clone into (Press enter to use: ~/.): " clone_dir
+echo -n "Enter the directory to clone into (Press enter to use the current directory):"
+read clone_dir
 
-# Use the home directory as the default if no input is provided
-clone_dir=${clone_dir:-~}
+# If the user doesn't input anything, use the current directory
+clone_dir=${clone_dir:-$(pwd)}
+
+exit 0;
+
+# Use the current directory as the default if no input is provided
+clone_dir=${clone_dir:-.}
 
 # Create the directory if it does not exist
 mkdir -p "$clone_dir"
