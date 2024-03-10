@@ -1,6 +1,9 @@
 # Mpeg4-Dash-Video-Converter
 
-This Bash script automates the process of converting video files into multiple bitrate versions using the specified CRF (Constant Rate Factor) values and generates MPEG-DASH compatible files. It utilizes FFmpeg and MP4Box to achieve this.
+This Bash script automates the process of converting video files to MPEG-DASH compatible files. It is pretty opinionated and tries to satisfy 3 potential users:
+1. A user with a good internet connection, he should get the best video and audio quality
+2. A user with a decent connection, he should still get a high quality video and audi
+3. A user with a very slow connection (think slow 3g). Quality will be poor but it will still play without buffering.
 
 ## Features
 - Converts input video files into multiple bitrate versions
