@@ -165,6 +165,29 @@ calculate_speed() {
   esac
 }
 
+convert_crf_x264_to_vp8() {
+  local h264_crf=$1
+  local vp8_crf
+
+  # This is a heuristic conversion and may not be accurate for all cases.
+  # The conversion is based on anecdotal evidence and may need to be adjusted
+  # for specific use cases or preferences.
+
+  if (( h264_crf <= 18 )); then
+    vp8_crf=4
+  elif (( h264_crf <= 23 )); then
+    vp8_crf=$(( (h264_crf - 18) * 2 + 4 ))
+  elif (( h264_crf <= 28 )); then
+    vp8_crf=$(( (h264_crf - 23) * 3 + 14 ))
+  elif (( h264_crf <= 35 )); then
+    vp8_crf=$(( (h264_crf - 28) * 4 + 29 ))
+  else
+    vp8_crf=63 # VP8's CRF can go up to 63, but we cap it here for simplicity
+  fi
+
+  echo "$vp8_crf"
+}
+
 speed=$(calculate_speed "$preset")
 
 convert_with_vp8() {
@@ -173,10 +196,12 @@ convert_with_vp8() {
   local base=$3
   local scaled_width=$4
   local scaled_height=$5
+  local vp8_crf=$(convert_crf_x264_to_vp8 "$crf")
+#  local vp8_crf=10
   # First pass
-  ffmpeg -y -i "$input_file" -c:v libvpx -b:v 0 -crf "$crf" -speed 4 -pass 1 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm /dev/null
+  ffmpeg -y -i "$input_file" -c:v libvpx -crf "$vp8_crf" -b:v 10M -speed 4 -pass 1 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm /dev/null
   # Second pass
-  ffmpeg -i "$input_file" -c:v libvpx -b:v 0 -crf "$crf" -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_dir}/${base}_${scaled_width}x${scaled_height}_vp8_crf${crf}.webm"
+  ffmpeg -i "$input_file" -c:v libvpx -crf "$vp8_crf" -b:v 10M -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_dir}/${base}_${scaled_width}x${scaled_height}_vp8_crf${vp8_crf}.webm"
 }
 
 convert_with_vp9() {
@@ -186,11 +211,12 @@ convert_with_vp9() {
   local scaled_width=$4
   local scaled_height=$5
   local crf=$6
+  local vp8_crf=$(convert_crf_x264_to_vp8 "$crf")
 
   # First pass
-  ffmpeg -y -i "$input_file" -c:v libvpx-vp9 -b:v 0 -crf "$crf" -speed 4 -pass 1 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm /dev/null
+  ffmpeg -y -i "$input_file" -c:v libvpx-vp9 -crf "$vp8_crf" -speed 4 -pass 1 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm /dev/null
   # Second pass
-  ffmpeg -i "$input_file" -c:v libvpx-vp9 -b:v 0 -crf "$crf" -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_dir}/${base}_${scaled_width}x${scaled_height}_vp9_crf${crf}.webm"
+  ffmpeg -i "$input_file" -c:v libvpx-vp9 -crf "$vp8_crf" -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_dir}/${base}_${scaled_width}x${scaled_height}_vp9_crf${vp8_crf}.webm"
 }
 
 convert_with_libx264() {
@@ -329,7 +355,7 @@ generate_dash() {
   local output_dir=$2
 
   # Create the MP4Box command with all media files in the directory
-  local mp4box_cmd="MP4Box -dash 12000 -rap -frag-rap -profile live -bs-switching no -out \"${output_dir}/stream.mpd\""
+  local mp4box_cmd="MP4Box -dash 12000 -rap -frag-rap -profile live -dash-profile webm -bs-switching no -out \"${output_dir}/stream.mpd\""
 
   # Add all video and audio files to the MP4Box command
   for media_file in "${media_dir}"/*.{mp4,webm,m4a,ogg}; do
@@ -337,6 +363,9 @@ generate_dash() {
       mp4box_cmd+=" \"$media_file\""
     fi
   done
+
+  echo "Executing MP4Box command: $mp4box_cmd"
+#  exit 1
 
   # Execute the MP4Box command
   eval $mp4box_cmd
