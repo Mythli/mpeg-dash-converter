@@ -1,5 +1,4 @@
 # Mpeg4-Dash-Video-Converter
-
 This Bash script automates the process of converting video files to MPEG-DASH compatible files. It is designed to cater to users with varying internet connection speeds, ensuring the best possible quality for each user's bandwidth.
 
 ## Features
@@ -27,11 +26,12 @@ To use the script, follow these steps:
    - `--max-crf <value>`: Set the maximum CRF value for the lowest quality level (default: 28).
    - `--steps <number>`: Set the number of resolution steps for the output videos (default: 4).
    - `--preset <preset>`: Set the x264 encoding preset (default: slower).
-   - `--x265`: Enable x265 encoding for HEVC compatibility.
+   - `--x264`: Encode with x264 (highest compatibility)
+   - `--x265`: Encode with x265 (highest compression)
 
    Example usage:
    ```
-   ./dashify.sh --framerate 30 --min-crf 18 --max-crf 28 --steps 4 --preset fast --x265 video1.mp4 video2.mp4
+   ./dashify.sh --framerate 24 --min-crf 18 --max-crf 28 --steps 4 --preset fast --x265 --x264 video1.mp4 video2.mp4
    ```
 
 3. The script will process each input video file and generate the corresponding multi-bitrate versions and MPEG-DASH files in a separate directory named `<video_name>.dash`.
@@ -45,6 +45,7 @@ You can customize the default values for the script by modifying the following v
 - `default_steps`: The default number of resolution steps for the output videos (default: 4).
 - `default_preset`: The default x264 encoding preset (default: slower).
 - `default_x265`: The default setting for x265 encoding (disabled by default).
+- `default_x264`: The default setting for x264 encoding (disabled by default).
 
 Feel free to adjust these values according to your specific requirements.
 
