@@ -355,7 +355,7 @@ generate_dash() {
   local output_dir=$2
 
   # Create the MP4Box command with all media files in the directory
-  local mp4box_cmd="MP4Box -dash 12000 -rap -frag-rap -profile live -dash-profile webm -bs-switching no -out \"${output_dir}/stream.mpd\""
+  local mp4box_cmd="MP4Box -dash 12000 -rap -frag-rap -profile live -bs-switching no -out \"${output_dir}/stream.mpd\""
 
   # Add all video and audio files to the MP4Box command
   for media_file in "${media_dir}"/*.{mp4,webm,m4a,ogg}; do
