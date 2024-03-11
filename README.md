@@ -49,5 +49,13 @@ You can customize the default values for the script by modifying the following v
 
 Feel free to adjust these values according to your specific requirements.
 
+## Using x265 on macOS
+If you are using macOS, you will need to install ffmpeg with x265 support. You can do this using Homebrew by running the following commands:
+```
+brew uninstall ffmpeg
+brew tap homebrew-ffmpeg/ffmpeg
+brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-xvid --with-fdk-aac
+```
+
 ## License
 This script is released under the [MIT License](LICENSE). Feel free to use, modify, and distribute it as per the terms of the license.
