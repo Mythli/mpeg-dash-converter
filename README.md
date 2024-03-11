@@ -31,7 +31,7 @@ To use the script, follow these steps:
 
    Example usage:
    ```
-   ./dashify.sh --framerate 24 --min-crf 18 --max-crf 28 --steps 4 --preset fast --x265 --x264 video1.mp4 video2.mp4
+   dashify.sh --framerate 24 --min-crf 18 --max-crf 28 --steps 4 --preset fast --x265 --x264 video1.mp4 video2.mp4
    ```
 
 3. The script will process each input video file and generate the corresponding multi-bitrate versions and MPEG-DASH files in a separate directory named `<video_name>.dash`.
