@@ -26,9 +26,9 @@ usage() {
   echo "  --max-crf <value>        Set the maximum CRF value for the lowest quality level (default: $default_max_crf)."
   echo "  --steps <number>         Set the number of resolution steps for the output videos (default: $default_steps)."
   echo "  --preset <preset>        Set the x264 encoding preset (default: $default_preset). This option is also mapped to vp8 and vp9 encoding speed"
-  #echo "  --vp8                    Enable vp8 encoding"
-  #echo "  --vp9                    Enable vp9 encoding"
-  echo "  --x264                   Enable x264 encoding"
+#  echo "  --vp8                    Enable vp8 encoding"
+#  echo "  --vp9                    Enable vp9 encoding"
+  echo "  --x264                   Enable x264 encoding (default if no codec is selected)."
   echo "  --x265                   Enable x265 encoding for HEVC compatibility."
   echo
   echo "  <input_files...>         One or more input video files to be processed."
@@ -403,6 +403,7 @@ for input_file in "${files[@]}"; do
 
       # Generate DASH files for the codec
       generate_dash "$tmp_dir" "$dash_dir"
+#      generate_dash_shaka "$tmp_dir" "$dash_dir"
 
       # Remove temporary files
       #rm -rf "$tmp_dir"
