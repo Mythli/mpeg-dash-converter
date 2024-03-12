@@ -7,12 +7,13 @@ default_min_crf=22
 default_max_crf=28
 default_steps=4
 default_preset="slower"
-default_x265=0 # x265 encoding disabled by default
-default_x264=0 # x265 encoding disabled by default
-default_vp8=0 # x265 encoding disabled by default
-default_vp9=0 # x265 encoding disabled by default
+default_x265=0
+default_x264=0
+default_vp8=0
+default_vp9=0
+default_include_best_crf_version=1 # Include best CRF version by default
 available_steps=(1 1.5 3 6 9 12 12 12)
-available_audio_steps=(1 2 2 2 2 2 2 2)
+audio_bitrates=(256 128 64 64 64 64)
 
 # If the flag is turned on a folder should be created for the codec and a separate dash should be created for each codec
 
@@ -26,6 +27,7 @@ usage() {
   echo "  --max-crf <value>        Set the maximum CRF value for the lowest quality level (default: $default_max_crf)."
   echo "  --steps <number>         Set the number of resolution steps for the output videos (default: $default_steps)."
   echo "  --preset <preset>        Set the x264 encoding preset (default: $default_preset). This option is also mapped to vp8 and vp9 encoding speed"
+  echo "  --no-best-crf-version    Do not include a version of the video with the best CRF value."
 #  echo "  --vp8                    Enable vp8 encoding"
 #  echo "  --vp9                    Enable vp9 encoding"
   echo "  --x264                   Enable x264 encoding (default if no codec is selected)."
@@ -47,6 +49,7 @@ x265=$default_x265
 vp8=$default_vp8
 vp9=$default_vp9
 x264=$default_x264
+include_best_crf_version=$default_include_best_crf_version
 files=()
 
 while [[ $# -gt 0 ]]; do
@@ -85,6 +88,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --x265)
       x265=1
+      shift
+      ;;
+     --no-best-crf-version)
+      include_best_crf_version=0
       shift
       ;;
     *)
@@ -219,6 +226,15 @@ convert_with_vp9() {
   ffmpeg -i "$input_file" -c:v libvpx-vp9 -crf "$vp8_crf" -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_dir}/${base}_${scaled_width}x${scaled_height}_vp9_crf${vp8_crf}.webm"
 }
 
+check_videotoolbox_support() {
+  local codec_name=$1
+  if ffmpeg -encoders | grep -q "${codec_name}_videotoolbox"; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
 convert_with_libx264() {
   local input_file=$1
   local output_dir=$2
@@ -226,7 +242,11 @@ convert_with_libx264() {
   local scaled_width=$4
   local scaled_height=$5
   local crf=$6
-  ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
+
+  ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
+    -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
+    -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
+    -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
 }
 
 convert_with_libx265() {
@@ -237,10 +257,10 @@ convert_with_libx265() {
   local scaled_height=$5
   local crf=$6
 
-   ffmpeg -y -i "$input_file" -an -c:v libx265 -preset "$preset" \
-      -x265-params "keyint=${framerate}:min-keyint=${framerate}:no-scenecut=1" \
-      -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
-      -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x265_crf${crf}.mp4"
+  ffmpeg -y -i "$input_file" -an -c:v "$encoder" -preset "$preset" \
+    -x265-params "keyint=${framerate}:min-keyint=${framerate}:no-scenecut=1" \
+    -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
+    -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x265_crf${crf}.mp4"
 }
 
 # Function to convert audio with open-source codec
@@ -248,7 +268,7 @@ convert_audio_opensource() {
   local input_file=$1
   local output_audio=$2
   local audio_bitrate=$3
-  ffmpeg -i "$input_file" -vn -c:a libvorbis -b:a "${audio_bitrate}k" "$output_audio"
+  ffmpeg -i "$input_file" -vn -c:a libopus -b:a "${audio_bitrate}k" "$output_audio"
 }
 
 # Function to convert audio with proprietary codec
@@ -265,29 +285,66 @@ convert_audio() {
   local output_dir=$2
   local base=$3
   local video_codec=$4
-  local original_bitrate=128
+
+  # Get the source audio bitrate
+  local source_bitrate=$(ffprobe -v error -select_streams a:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1:nokey=1 "$input_file")
+  source_bitrate=$((source_bitrate / 1000)) # Convert to kbps
 
   # Determine if an open-source video codec is used like vp8 or vp9, use the open source function, else use the proprietary function
-  if [[ "$video_codec" == "vp8" || "$video_codec" == "vp9" ]]; then
-    for ((i=0; i<steps; i++)); do
-      local audio_bitrate=$(bc <<< "scale=0; $original_bitrate / ${available_audio_steps[$i]} / 1")
-      if [ -f "${output_dir}/${base}_audio_${audio_bitrate}.ogg" ]; then
-        echo "File exists"
-      else
-        convert_audio_opensource "$input_file" "${output_dir}/${base}_audio_${audio_bitrate}.ogg" "$audio_bitrate"
-      fi
-    done
-  else
-    for ((i=0; i<steps; i++)); do
-      local audio_bitrate=$(bc <<< "scale=0; $original_bitrate / ${available_audio_steps[$i]} / 1")
+  for audio_bitrate in "${audio_bitrates[@]}"; do
+    # Ensure the selected bitrate does not exceed the source bitrate
+    if [ "$audio_bitrate" -gt "$source_bitrate" ]; then
+      audio_bitrate=$source_bitrate
+    fi
 
-      if [ -f "${output_dir}/${base}_audio_${audio_bitrate}.m4a" ]; then
-        echo "File exists"
-      else
-        convert_audio_proprietary "$input_file" "${output_dir}/${base}_audio_${audio_bitrate}.m4a" "$audio_bitrate"
-      fi
-    done
-  fi
+    local output_extension="m4a"
+    local codec_command="convert_audio_proprietary"
+    if [[ "$video_codec" == "vp8" || "$video_codec" == "vp9" ]]; then
+      output_extension="opus"
+      codec_command="convert_audio_opensource"
+    fi
+
+    local output_audio="${output_dir}/${base}_audio_${audio_bitrate}.${output_extension}"
+    if [ -f "$output_audio" ]; then
+      echo "File exists: $output_audio"
+    else
+      $codec_command "$input_file" "$output_audio" "$audio_bitrate"
+    fi
+
+    # If the selected bitrate is the same as the source bitrate, no need to go further
+    if [ "$audio_bitrate" -eq "$source_bitrate" ]; then
+      break
+    fi
+  done
+}
+
+convert_video_with_codec() {
+  local input_file=$1
+  local output_dir=$2
+  local base=$3
+  local scaled_width=$4
+  local scaled_height=$5
+  local crf=$6
+  local codec=$7
+
+  case "$codec" in
+    x264)
+      convert_with_libx264 "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf"
+      ;;
+    x265)
+      convert_with_libx265 "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf"
+      ;;
+    vp8)
+      convert_with_vp8 "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf"
+      ;;
+    vp9)
+      convert_with_vp9 "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf"
+      ;;
+    *)
+      echo "Unsupported codec: $codec"
+      exit 1
+      ;;
+  esac
 }
 
 # Function to convert video
@@ -334,18 +391,10 @@ convert_video() {
       scaled_width=$original_width
     fi
 
-    # Call the appropriate codec-specific conversion function
-    if [ "$codec" == "x264" ]; then
-      convert_with_libx264 "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf"
-    elif [ "$codec" == "x265" ]; then
-      convert_with_libx265 "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf"
-    elif [ "$codec" == "vp8" ]; then
-      convert_with_vp8 "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf"
-    elif [ "$codec" == "vp9" ]; then
-      convert_with_vp9 "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf"
-    else
-      echo "Unsupported codec: $codec"
-      exit 1
+    convert_video_with_codec "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$crf" "$codec"
+
+    if [ "$include_best_crf_version" -eq 1 ] && [ "$crf" -ne "$min_crf" ]; then
+      convert_video_with_codec "$input_file" "$output_dir" "$base" "$scaled_width" "$scaled_height" "$min_crf" "$codec"
     fi
   done
 }
@@ -380,6 +429,57 @@ generate_dash() {
   eval $mp4box_cmd
 }
 
+generate_dash_with_packager() {
+  local media_dir=$1
+  local output_dir=$2
+  local base=$3
+
+  # Create a variable to hold the packager command
+  local packager_cmd="bin/packager-osx-arm64"
+
+  # Find all video files (WebM and MP4) and sort them by resolution in descending order
+  local video_files=$(find "${media_dir}" -type f \( -name "*.webm" -o -name "*.mp4" \) | sort -r)
+
+  # Check if video files were found
+  if [ -z "$video_files" ]; then
+    echo "No video files found for packaging."
+    return 1
+  fi
+
+  # Add video files to the packager command
+  for video_file in $video_files; do
+    local stream_name=$(basename -- "$video_file")
+    local extension="${stream_name##*.}" # Extract the file extension
+    stream_name="${stream_name%.*}" # Remove file extension
+    packager_cmd+=" input=$video_file,stream=video,output=${output_dir}/${stream_name}.${extension}"
+  done
+
+  # Find all audio files (Opus and AAC) and sort them by bitrate in descending order
+  local audio_files=$(find "${media_dir}" -type f \( -name "*.opus" -o -name "*.m4a" \) | sort -r)
+
+  # Check if audio files were found
+  if [ -z "$audio_files" ]; then
+    echo "No audio files found for packaging."
+    return 1
+  fi
+
+  # Add audio files to the packager command
+  for audio_file in $audio_files; do
+    local stream_name=$(basename -- "$audio_file")
+    local extension="${stream_name##*.}" # Extract the file extension
+    stream_name="${stream_name%.*}" # Remove file extension
+    packager_cmd+=" input=$audio_file,stream=audio,output=${output_dir}/${stream_name}.${extension}"
+  done
+
+  # Specify the output DASH manifest file
+  packager_cmd+=" --mpd_output ${output_dir}/stream.mpd"
+
+  echo "Executing packager command: $packager_cmd"
+
+  # Execute the packager command
+  eval $packager_cmd
+}
+
 # Main loop to process files
 for input_file in "${files[@]}"; do
 
@@ -412,7 +512,7 @@ for input_file in "${files[@]}"; do
 
       # Generate DASH files for the codec
       generate_dash "$tmp_dir" "$dash_dir"
-#      generate_dash_shaka "$tmp_dir" "$dash_dir"
+      #      generate_dash_with_packager "$tmp_dir" "$dash_dir"
 
       # Remove temporary files
       #rm -rf "$tmp_dir"
