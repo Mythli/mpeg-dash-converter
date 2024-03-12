@@ -354,18 +354,27 @@ generate_dash() {
   local media_dir=$1
   local output_dir=$2
 
-  # Create the MP4Box command with all media files in the directory
+  # Create the MP4Box command with the base options
   local mp4box_cmd="MP4Box -dash 12000 -rap -frag-rap -profile live -bs-switching no -out \"${output_dir}/stream.mpd\""
 
-  # Add all video and audio files to the MP4Box command
-  for media_file in "${media_dir}"/*.{mp4,webm,m4a,ogg}; do
-    if [ -f "$media_file" ]; then
-      mp4box_cmd+=" \"$media_file\""
-    fi
+  # Find all video and audio files and sort them by size in descending order
+  # The sort command uses -n for numeric sort, -r for reverse (descending), and -k2 to sort by the second column (file size)
+  local sorted_files
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS uses a different syntax for stat and sort
+    sorted_files=$(find "${media_dir}" -type f \( -name "*.mp4" -o -name "*.webm" -o -name "*.m4a" -o -name "*.ogg" \) -exec stat -f"%z %N" {} \; | sort -nr -k1,1 | cut -d' ' -f2-)
+  else
+    # Linux
+    sorted_files=$(find "${media_dir}" -type f \( -name "*.mp4" -o -name "*.webm" -o -name "*.m4a" -o -name "*.ogg" \) -exec stat -c"%s %n" {} \; | sort -nr -k1,1 | cut -d' ' -f2-)
+  fi
+
+  # Add sorted files to the MP4Box command
+  for media_file in $sorted_files; do
+    mp4box_cmd+=" \"$media_file\""
   done
 
   echo "Executing MP4Box command: $mp4box_cmd"
-#  exit 1
+  # exit 1
 
   # Execute the MP4Box command
   eval $mp4box_cmd
