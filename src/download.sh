@@ -17,7 +17,7 @@ mkdir -p "$clone_dir"
 cd "$clone_dir" || { echo "Failed to change directory to $clone_dir"; exit 1; }
 
 # Clone the repository
-git clone git@github.com:Mythli/mpeg-dash-converter.git || { echo "Failed to clone repository"; exit 1; }
+git clone https://github.com/Mythli/mpeg-dash-converter.git || { echo "Failed to clone repository"; exit 1; }
 
 # Change to the repository directory
 cd mpeg-dash-converter || { echo "Failed to change directory to the repository"; exit 1; }
