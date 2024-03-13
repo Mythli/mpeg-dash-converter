@@ -12,6 +12,7 @@ default_x264=0
 default_vp8=0
 default_vp9=0
 default_include_best_crf_version=1 # Include best CRF version by default
+default_segment_duration=12
 available_steps=(1 1.5 3 6 9 12 12 12)
 audio_bitrates=(256 128 64 64 64 64)
 
@@ -22,18 +23,19 @@ usage() {
   echo "Usage: $0 [options] <input_files...>"
   echo
   echo "Options:"
-  echo "  --framerate <rate>       Set the framerate for the output videos (default: $default_framerate)."
-  echo "  --min-crf <value>        Set the minimum CRF value for the highest quality level (default: $default_min_crf)."
-  echo "  --max-crf <value>        Set the maximum CRF value for the lowest quality level (default: $default_max_crf)."
-  echo "  --steps <number>         Set the number of resolution steps for the output videos (default: $default_steps)."
-  echo "  --preset <preset>        Set the x264 encoding preset (default: $default_preset). This option is also mapped to vp8 and vp9 encoding speed"
-  echo "  --no-best-crf-version    Do not include a version of the video with the best CRF value."
-#  echo "  --vp8                    Enable vp8 encoding"
-#  echo "  --vp9                    Enable vp9 encoding"
-  echo "  --x264                   Enable x264 encoding (default if no codec is selected)."
-  echo "  --x265                   Enable x265 encoding for HEVC compatibility."
+  echo "  --framerate <rate>                  Set the framerate for the output videos (default: $default_framerate)."
+  echo "  --min-crf <value>                   Set the minimum CRF value for the highest quality level (default: $default_min_crf)."
+  echo "  --max-crf <value>                   Set the maximum CRF value for the lowest quality level (default: $default_max_crf)."
+  echo "  --steps <number>                    Set the number of resolution steps for the output videos (default: $default_steps)."
+  echo "  --preset <preset>                   Set the x264 encoding preset (default: $default_preset). This option is also mapped to vp8 and vp9 encoding speed"
+  echo "  --no-best-crf-version               Do not include a version of the video with the best CRF value."
+  echo "  --dash-segment-duration <duration>  Do not include a version of the video with the best CRF value (default: $default_segment_duration)"
+  echo "  --vp8                               Enable vp8 encoding"
+  echo "  --vp9                               Enable vp9 encoding"
+  echo "  --x264                              Enable x264 encoding (default if no codec is selected)."
+  echo "  --x265                              Enable x265 encoding for HEVC compatibility."
   echo
-  echo "  <input_files...>         One or more input video files to be processed."
+  echo "  <input_files...>                    One or more input video files to be processed."
   echo
   echo "This script converts input video files into multiple bitrate versions using specified CRF values and generates MPEG-DASH compatible files."
   exit 1
@@ -50,6 +52,7 @@ vp8=$default_vp8
 vp9=$default_vp9
 x264=$default_x264
 include_best_crf_version=$default_include_best_crf_version
+segment_duration=$default_segment_duration
 files=()
 
 while [[ $# -gt 0 ]]; do
@@ -93,6 +96,10 @@ while [[ $# -gt 0 ]]; do
      --no-best-crf-version)
       include_best_crf_version=0
       shift
+      ;;
+    --dash-segment-duration)
+      segment_duration="$2"
+      shift 2
       ;;
     *)
       files+=("$1")
@@ -243,10 +250,29 @@ convert_with_libx264() {
   local scaled_height=$5
   local crf=$6
 
+  local use_videotoolbox=$(check_videotoolbox_support "h264")
+
   ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
-    -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
-    -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
-    -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
+            -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
+            -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
+            -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
+
+#  if [ "$use_videotoolbox" -eq 1 ]; then
+#    # TODO
+#     echo "ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
+#          -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
+#          -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
+#          -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4""
+#    #ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
+#    #      -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
+#    #      -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
+#    #      -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
+#  else
+#    ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
+#      -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
+#      -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
+#      -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
+#  fi
 }
 
 convert_with_libx265() {
@@ -256,6 +282,13 @@ convert_with_libx265() {
   local scaled_width=$4
   local scaled_height=$5
   local crf=$6
+
+  local use_videotoolbox=$(check_videotoolbox_support "hevc")
+
+  local encoder="libx265"
+  if [ "$use_videotoolbox" -eq 1 ]; then
+    encoder="hevc_videotoolbox"
+  fi
 
   ffmpeg -y -i "$input_file" -an -c:v "$encoder" -preset "$preset" \
     -x265-params "keyint=${framerate}:min-keyint=${framerate}:no-scenecut=1" \
@@ -438,46 +471,28 @@ generate_dash_with_packager() {
   local packager_cmd="bin/packager-osx-arm64"
 
   # Find all video files (WebM and MP4) and sort them by resolution in descending order
-  local video_files=$(find "${media_dir}" -type f \( -name "*.webm" -o -name "*.mp4" \) | sort -r)
-
-  # Check if video files were found
-  if [ -z "$video_files" ]; then
-    echo "No video files found for packaging."
-    return 1
-  fi
-
-  # Add video files to the packager command
-  for video_file in $video_files; do
+  while IFS= read -r -d '' video_file; do
     local stream_name=$(basename -- "$video_file")
     local extension="${stream_name##*.}" # Extract the file extension
     stream_name="${stream_name%.*}" # Remove file extension
-    packager_cmd+=" input=$video_file,stream=video,output=${output_dir}/${stream_name}.${extension}"
-  done
+    packager_cmd+=" in=\"$video_file\",stream=video,init_segment=\"${output_dir}/${stream_name}_init.${extension}\",segment_template=\"${output_dir}/${stream_name}_\\\$Number\\$.${extension}\""
+  done < <(find "${media_dir}" -type f \( -name "*.webm" -o -name "*.mp4" \) -print0 | sort -rz)
 
   # Find all audio files (Opus and AAC) and sort them by bitrate in descending order
-  local audio_files=$(find "${media_dir}" -type f \( -name "*.opus" -o -name "*.m4a" \) | sort -r)
-
-  # Check if audio files were found
-  if [ -z "$audio_files" ]; then
-    echo "No audio files found for packaging."
-    return 1
-  fi
-
-  # Add audio files to the packager command
-  for audio_file in $audio_files; do
+  while IFS= read -r -d '' audio_file; do
     local stream_name=$(basename -- "$audio_file")
     local extension="${stream_name##*.}" # Extract the file extension
     stream_name="${stream_name%.*}" # Remove file extension
-    packager_cmd+=" input=$audio_file,stream=audio,output=${output_dir}/${stream_name}.${extension}"
-  done
+    packager_cmd+=" in=\"$audio_file\",stream=audio,init_segment=\"${output_dir}/${stream_name}_init.${extension}\",segment_template=\"${output_dir}/${stream_name}_\\\$Number\\$.${extension}\""
+  done < <(find "${media_dir}" -type f \( -name "*.opus" -o -name "*.m4a" \) -print0 | sort -rz)
 
   # Specify the output DASH manifest file
-  packager_cmd+=" --mpd_output ${output_dir}/stream.mpd"
+  packager_cmd+=" --mpd_output \"${output_dir}/stream.mpd\" --min_buffer_time 2 --segment_duration $segment_duration"
 
   echo "Executing packager command: $packager_cmd"
 
   # Execute the packager command
-  eval $packager_cmd
+  eval "$packager_cmd"
 }
 
 # Main loop to process files
@@ -512,7 +527,7 @@ for input_file in "${files[@]}"; do
 
       # Generate DASH files for the codec
       generate_dash "$tmp_dir" "$dash_dir"
-      #      generate_dash_with_packager "$tmp_dir" "$dash_dir"
+#      generate_dash_with_packager "$tmp_dir" "$dash_dir"
 
       # Remove temporary files
       #rm -rf "$tmp_dir"
