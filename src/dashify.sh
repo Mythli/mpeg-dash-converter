@@ -133,6 +133,14 @@ if ! command -v MP4Box &> /dev/null; then
     exit 1
 fi
 
+# check for hash program
+if ! command -v sha256sum &> /dev/null; then
+  if ! command -v shasum &> /dev/null; then
+    echo "Error: sha256sum or shasum is not installed"
+    exit 1
+  fi
+fi
+
 # Function to calculate the greatest common divisor (GCD)
 gcd() {
   local a=$1
@@ -450,12 +458,33 @@ generate_directory_hash() {
 }
 
 hash_directory() {
-  if [ -d "$1" ]; then
-    find "$1" -type f -exec sha256sum {} + | sha256sum | cut -d ' ' -f 1
-  else
+  if [ ! -d "$1" ]; then
     echo "Error: $1 is not a valid directory." >&2
     return 1
   fi
+
+  # Detect the platform (similar to $OSTYPE)
+  case "$(uname -s)" in
+    Linux*|CYGWIN*|MINGW*|MSYS*|BSD*)
+      SHACMD="sha256sum"
+      ;;
+    Darwin*)
+      SHACMD="shasum -a 256"
+      ;;
+    *)
+      echo "Error: Unsupported operating system." >&2
+      return 1
+      ;;
+  esac
+
+  # Check if the SHA command exists
+  if ! command -v $SHACMD &> /dev/null; then
+    echo "Error: SHA command not found." >&2
+    return 1
+  fi
+
+  # Hash the directory
+  (cd "$1" && find . -type f -exec $SHACMD {} + | sort | $SHACMD | cut -d ' ' -f 1)
 }
 
 generate_dash() {
