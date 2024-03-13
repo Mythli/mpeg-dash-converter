@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -x
 
 # Default values
 default_framerate=24
@@ -27,11 +28,11 @@ usage() {
   echo "  --min-crf <value>                   Set the minimum CRF value for the highest quality level (default: $default_min_crf)."
   echo "  --max-crf <value>                   Set the maximum CRF value for the lowest quality level (default: $default_max_crf)."
   echo "  --steps <number>                    Set the number of resolution steps for the output videos (default: $default_steps)."
-  echo "  --preset <preset>                   Set the x264 encoding preset (default: $default_preset), available (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)."
+  echo "  --preset <preset>                   Set the x264 encoding preset (default: $default_preset), available (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow, placebo)."
   echo "  --no-best-crf-version               Do not include a version of the video with the best CRF value."
   echo "  --dash-segment-duration <duration>  Do not include a version of the video with the best CRF value (default: $default_segment_duration)"
-  echo "  --vp8                               Enable vp8 encoding"
-  echo "  --vp9                               Enable vp9 encoding"
+#  echo "  --vp8                               Enable vp8 encoding"
+#  echo "  --vp9                               Enable vp9 encoding"
   echo "  --x264                              Enable x264 encoding (default if no codec is selected)."
   echo "  --x265                              Enable x265 encoding for HEVC compatibility."
   echo
@@ -448,36 +449,57 @@ generate_directory_hash() {
   echo "$dir_hash"
 }
 
+hash_directory() {
+  if [ -d "$1" ]; then
+    find "$1" -type f -exec sha256sum {} + | sha256sum | cut -d ' ' -f 1
+  else
+    echo "Error: $1 is not a valid directory." >&2
+    return 1
+  fi
+}
+
 generate_dash() {
   local media_dir=$1
   local output_dir=$2
+  local output_file="${output_dir}/stream.mpd"
 
   # Create the MP4Box command with the base options
-  local mp4box_cmd="MP4Box -dash 12000 -rap -frag-rap -profile live -bs-switching no -out \"${output_dir}/stream.mpd\""
+  local mp4box_cmd=("MP4Box" "-dash" "12000" "-rap" "-frag-rap" "-profile" "live" "-bs-switching" "no" "-out" "\"${output_file}\"")
 
-  # Find all video and audio files and sort them by size in descending order
-  # The sort command uses -n for numeric sort, -r for reverse (descending), and -k2 to sort by the second column (file size)
-  local sorted_files
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS uses a different syntax for stat and sort
-    sorted_files=$(find "${media_dir}" -type f \( -name "*.mp4" -o -name "*.webm" -o -name "*.m4a" -o -name "*.ogg" \) -exec stat -f"%z %N" {} \; | sort -nr -k1,1 | cut -d' ' -f2-)
-  else
-    # Linux
-    sorted_files=$(find "${media_dir}" -type f \( -name "*.mp4" -o -name "*.webm" -o -name "*.m4a" -o -name "*.ogg" \) -exec stat -c"%s %n" {} \; | sort -nr -k1,1 | cut -d' ' -f2-)
-  fi
+  # Create an array to hold the media files
+  local media_files=()
+
+  # Populate the array with the supported media files
+  shopt -s nullglob
+  for file in "${media_dir}"/*.{mp4,webm,m4a,ogg}; do
+    if [[ -f "$file" ]]; then
+      media_files+=("$file")
+    fi
+  done
+  shopt -u nullglob
+
+  # Sort the array by file size in descending order
+  IFS=$'\n' media_files=($(sort -nr <<<"${media_files[*]}"))
+  unset IFS
 
   # Add sorted files to the MP4Box command
-  for media_file in $sorted_files; do
-    mp4box_cmd+=" \"$media_file\""
+  for media_file in "${media_files[@]}"; do
+    mp4box_cmd+=("\"$media_file\"")
   done
 
-  echo "Executing MP4Box command: $mp4box_cmd"
+  echo "Executing MP4Box command: ${mp4box_cmd[*]}"
   # exit 1
 
   # Execute the MP4Box command
-  eval $mp4box_cmd
+  eval ${mp4box_cmd[*]}
 
+  # first 6 characters of the hash of the media directory
+  local hash=$(hash_directory "$media_dir" | cut -c1-6)
 
+  # generate hash query param and append it to the media attribute in the mpd file to bust the cache
+  local hash_query="?hash=${hash}"
+  sed -e "s|\(media=\"[^\"]*\)\(\"\)|\1${hash_query}\2|g" "$output_file" > "$output_file.tmp"
+  mv "$output_file.tmp" "$output_file"
 }
 
 generate_dash_with_packager() {
@@ -515,10 +537,15 @@ generate_dash_with_packager() {
 
 # Main loop to process files
 for input_file in "${files[@]}"; do
+  if [ -d "$input_file" ]; then
+    echo "Skipping directory: $input_file"
+    continue
+  fi
 
   filename=$(basename -- "$input_file")
   dirname=$(dirname -- "$input_file")
-  base="${filename%.*}"
+  baseUnescaped="${filename%.*}"
+  base=$(echo "$baseUnescaped" | sed 's/[^a-zA-Z0-9]/_/g')
 
   echo "Converting \"$filename\" to multi-bitrate video in MPEG-DASH"
 
@@ -541,6 +568,7 @@ for input_file in "${files[@]}"; do
       mkdir -p "$tmp_dir"
 
       # Convert video using the specified codec
+
       convert_video "$input_file" "$tmp_dir" "$base" "$original_width" "$original_height" "${codec}"
 
       # Generate DASH files for the codec
