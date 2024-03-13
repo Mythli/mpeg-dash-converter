@@ -27,7 +27,7 @@ usage() {
   echo "  --min-crf <value>                   Set the minimum CRF value for the highest quality level (default: $default_min_crf)."
   echo "  --max-crf <value>                   Set the maximum CRF value for the lowest quality level (default: $default_max_crf)."
   echo "  --steps <number>                    Set the number of resolution steps for the output videos (default: $default_steps)."
-  echo "  --preset <preset>                   Set the x264 encoding preset (default: $default_preset). This option is also mapped to vp8 and vp9 encoding speed"
+  echo "  --preset <preset>                   Set the x264 encoding preset (default: $default_preset), available (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)."
   echo "  --no-best-crf-version               Do not include a version of the video with the best CRF value."
   echo "  --dash-segment-duration <duration>  Do not include a version of the video with the best CRF value (default: $default_segment_duration)"
   echo "  --vp8                               Enable vp8 encoding"
@@ -107,6 +107,9 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+echo "preset: $preset"
+#exit 1;
 
 # if no codec is selected, default to x264
 if [ $x264 -eq 0 ] && [ $x265 -eq 0 ] && [ $vp8 -eq 0 ] && [ $vp9 -eq 0 ]; then
@@ -432,6 +435,19 @@ convert_video() {
   done
 }
 
+generate_directory_hash() {
+  local dir_path=$1
+  # Use find to list all files, sort them, and then hash the list
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS uses shasum
+    local dir_hash=$(find "$dir_path" -type f -exec shasum {} \; | sort | shasum | awk '{print $1}')
+  else
+    # Linux uses sha1sum
+    local dir_hash=$(find "$dir_path" -type f -exec sha1sum {} \; | sort | sha1sum | awk '{print $1}')
+  fi
+  echo "$dir_hash"
+}
+
 generate_dash() {
   local media_dir=$1
   local output_dir=$2
@@ -460,6 +476,8 @@ generate_dash() {
 
   # Execute the MP4Box command
   eval $mp4box_cmd
+
+
 }
 
 generate_dash_with_packager() {
