@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-set -x
+#set -x
 
 # Default values
 default_framerate=24
@@ -16,7 +16,7 @@ default_include_best_crf_version=1 # Include best CRF version by default
 default_segment_duration=12
 available_steps=(1 1.5 3 6 9 12 12 12)
 audio_bitrates=(256 128 64 64 64 64)
-
+force=0
 # If the flag is turned on a folder should be created for the codec and a separate dash should be created for each codec
 
 # Usage information
@@ -35,6 +35,7 @@ usage() {
 #  echo "  --vp9                               Enable vp9 encoding"
   echo "  --x264                              Enable x264 encoding (default if no codec is selected)."
   echo "  --x265                              Enable x265 encoding for HEVC compatibility."
+  echo "  --force                             Overwrite existing files."
   echo
   echo "  <input_files...>                    One or more input video files to be processed."
   echo
@@ -101,6 +102,10 @@ while [[ $# -gt 0 ]]; do
     --dash-segment-duration)
       segment_duration="$2"
       shift 2
+      ;;
+    --force)
+      force=1
+      shift
       ;;
     *)
       files+=("$1")
@@ -223,11 +228,17 @@ convert_with_vp8() {
   local scaled_width=$4
   local scaled_height=$5
   local vp8_crf=$(convert_crf_x264_to_vp8 "$crf")
-#  local vp8_crf=10
+  local output_file="${output_dir}/${base}_${scaled_width}x${scaled_height}_vp8_crf${vp8_crf}.webm"
+
+  if [ -f "$output_file" ]; then
+    echo "File exists: $output_file"
+    return
+  fi
+
   # First pass
   ffmpeg -y -i "$input_file" -c:v libvpx -crf "$vp8_crf" -b:v 10M -speed 4 -pass 1 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm /dev/null
   # Second pass
-  ffmpeg -i "$input_file" -c:v libvpx -crf "$vp8_crf" -b:v 10M -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_dir}/${base}_${scaled_width}x${scaled_height}_vp8_crf${vp8_crf}.webm"
+  ffmpeg -i "$input_file" -c:v libvpx -crf "$vp8_crf" -b:v 10M -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_file}"
 }
 
 convert_with_vp9() {
@@ -238,11 +249,17 @@ convert_with_vp9() {
   local scaled_height=$5
   local crf=$6
   local vp8_crf=$(convert_crf_x264_to_vp8 "$crf")
+  local output_file="${output_dir}/${base}_${scaled_width}x${scaled_height}_vp9_crf${vp8_crf}.webm"
+
+  if [ -f "$output_file" ]; then
+    echo "File exists: $output_file"
+    return
+  fi
 
   # First pass
   ffmpeg -y -i "$input_file" -c:v libvpx-vp9 -crf "$vp8_crf" -speed 4 -pass 1 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm /dev/null
   # Second pass
-  ffmpeg -i "$input_file" -c:v libvpx-vp9 -crf "$vp8_crf" -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_dir}/${base}_${scaled_width}x${scaled_height}_vp9_crf${vp8_crf}.webm"
+  ffmpeg -i "$input_file" -c:v libvpx-vp9 -crf "$vp8_crf" -speed "$speed" -pass 2 -an -vf "scale=${scaled_width}:${scaled_height}" -f webm "${output_file}"
 }
 
 check_videotoolbox_support() {
@@ -262,29 +279,18 @@ convert_with_libx264() {
   local scaled_height=$5
   local crf=$6
 
-  local use_videotoolbox=$(check_videotoolbox_support "h264")
+  local output_file="${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
+
+  # only re-encode if the file does not exist
+  if [ -f "$output_file" ]; then
+    echo "File exists: $output_file"
+    return
+  fi
 
   ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
             -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
             -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
-            -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
-
-#  if [ "$use_videotoolbox" -eq 1 ]; then
-#    # TODO
-#     echo "ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
-#          -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
-#          -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
-#          -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4""
-#    #ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
-#    #      -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
-#    #      -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
-#    #      -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
-#  else
-#    ffmpeg -y -i "$input_file" -an -c:v libx264 -preset "$preset" \
-#      -x264opts keyint="$framerate":min-keyint="$framerate":no-scenecut \
-#      -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
-#      -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x264_crf${crf}.mp4"
-#  fi
+            -f mp4 "$output_file"
 }
 
 convert_with_libx265() {
@@ -295,17 +301,18 @@ convert_with_libx265() {
   local scaled_height=$5
   local crf=$6
 
-  local use_videotoolbox=$(check_videotoolbox_support "hevc")
+  output_file="${output_dir}/${base}_${scaled_width}x${scaled_height}_x265_crf${crf}.mp4"
 
-  local encoder="libx265"
-  if [ "$use_videotoolbox" -eq 1 ]; then
-    encoder="hevc_videotoolbox"
+  # dont re-encode if the file already exists
+  if [ -f "$output_file" ]; then
+    echo "File exists: $output_file"
+    return
   fi
 
   ffmpeg -y -i "$input_file" -an -c:v "$encoder" -preset "$preset" \
     -x265-params "keyint=${framerate}:min-keyint=${framerate}:no-scenecut=1" \
     -vf "scale=${scaled_width}:${scaled_height}" -crf "$crf" \
-    -f mp4 "${output_dir}/${base}_${scaled_width}x${scaled_height}_x265_crf${crf}.mp4"
+    -f mp4 "$output_file"
 }
 
 # Function to convert audio with open-source codec
@@ -444,19 +451,6 @@ convert_video() {
   done
 }
 
-generate_directory_hash() {
-  local dir_path=$1
-  # Use find to list all files, sort them, and then hash the list
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS uses shasum
-    local dir_hash=$(find "$dir_path" -type f -exec shasum {} \; | sort | shasum | awk '{print $1}')
-  else
-    # Linux uses sha1sum
-    local dir_hash=$(find "$dir_path" -type f -exec sha1sum {} \; | sort | sha1sum | awk '{print $1}')
-  fi
-  echo "$dir_hash"
-}
-
 hash_directory() {
   if [ ! -d "$1" ]; then
     echo "Error: $1 is not a valid directory." >&2
@@ -500,7 +494,7 @@ generate_dash() {
 
   # Populate the array with the supported media files
   shopt -s nullglob
-  for file in "${media_dir}"/*.{mp4,webm,m4a,ogg}; do
+  for file in "${media_dir}"/*.{mp4,m4a}; do
     if [[ -f "$file" ]]; then
       media_files+=("$file")
     fi
@@ -588,9 +582,11 @@ for input_file in "${files[@]}"; do
       tmp_dir="${codec_dir}.tmp"
       dash_dir="${codec_dir}.dash"
 
-      # Delete the tmp and dash directories if they already exist
-      rm -rf "$dash_dir"
-      rm -rf "$tmp_dir"
+      # Delete the tmp and dash directories if force is enabled
+      if [ $force -eq 1 ]; then
+        rm -rf "$dash_dir"
+        rm -rf "$tmp_dir"
+      fi
 
       # Create new tmp and dash directories
       mkdir -p "$dash_dir"
