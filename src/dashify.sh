@@ -481,6 +481,12 @@ hash_directory() {
   (cd "$1" && find . -type f -exec $SHACMD {} + | sort | $SHACMD | cut -d ' ' -f 1)
 }
 
+generate_random_key() {
+    local key_length=6
+    local key=$(LC_ALL=C tr -dc 'A-Za-z' </dev/urandom | head -c ${key_length})
+    echo $key
+}
+
 generate_dash() {
   local media_dir=$1
   local output_dir=$2
@@ -517,13 +523,15 @@ generate_dash() {
   eval ${mp4box_cmd[*]}
 
   # first 6 characters of the hash of the media directory
-  local hash=$(hash_directory "$media_dir" | cut -c1-6)
+  local hash=$(generate_random_key)
 
   # generate hash query param and append it to the media attribute in the mpd file to bust the cache
   local hash_query="?hash=${hash}"
   sed -e "s|\(media=\"[^\"]*\)\(\"\)|\1${hash_query}\2|g" "$output_file" > "$output_file.tmp"
   mv "$output_file.tmp" "$output_file"
 }
+
+
 
 generate_dash_with_packager() {
   local media_dir=$1
